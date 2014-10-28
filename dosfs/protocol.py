@@ -39,11 +39,14 @@ class _Message (object):
 class DirectoryListRequest (_Message):
     msgtype = 0x01
 
+    def __init__(self, path=[]):
+        self.path = path
+
     def _parse_message_body(self, body):
-        pass
+        self.path = body.split(b'\0')
 
     def _encode_message_body(self):
-        return b''
+        return b'\0'.join(self.path)
 
 class DirectoryListResponse (_Message):
     msgtype = 0x01
@@ -88,6 +91,7 @@ class NodeInfoResponse (_Message):
                 self.created, self.accessed, self.modified)
 
 class FileContentsRequest (_Message):
+    msgtype = 0x03
 
     def __init__(self, offset=0, requested_length=0, path=[]):
         self.offset = offset
@@ -103,17 +107,48 @@ class FileContentsRequest (_Message):
                 '\0'.join(path))
 
 class FileContentsResponse (_Message):
-    pass
+    msgtype = 0x03
+
+    def __init__(self, data):
+        self.data = data
+
+    def _parse_message_body(self, body):
+        self.data = body
+
+    def _encode_message_body(self):
+        return self.data
+
+class VersionRequest (_Message):
+    msgtype = 0x7F
+
+    def _parse_message_body(self, body):
+        pass
+
+    def _encode_message_body(self):
+        return b''
+
+class VersionResponse (_Message):
+    """The Python representation of the version should be a 3-tuple: (major, minor, bugfix)"""
+    msgtype = 0x7F
+
+    def __init__(self, version):
+        self.version = version
+
+    def _parse_message_body(self, body):
+        self.version = struct.unpack('!BBB', body)
+
+    def _encode_message_body(self):
+        return struct.pack('!BBB', *self.version)
 
 REQUEST_CLASSES = {
     0x01: DirectoryListRequest,
     0x02: NodeInfoRequest,
     0x03: FileContentsRequest,
-#    0x7F: VersionRequest,
+    0x7F: VersionRequest,
 }
 RESPONSE_CLASSES = {
     0x01: DirectoryListResponse,
     0x02: NodeInfoResponse,
-#    0x03: FileContentsResponse,
-#    0x7F: VersionResponse,
+    0x03: FileContentsResponse,
+    0x7F: VersionResponse,
 }
