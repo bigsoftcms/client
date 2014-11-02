@@ -3,20 +3,21 @@ from binascii import crc32
 
 _HEADER_SPEC = '!BHH'
 _FOOTER_SPEC = '!I'
-_HEADER_LEN = struct.calcsize(_HEADER_SPEC)
-_FOOTER_LEN = struct.calcsize(_FOOTER_SPEC)
+HEADER_LEN = struct.calcsize(_HEADER_SPEC)
+FOOTER_LEN = struct.calcsize(_FOOTER_SPEC)
 
-class _Message (object):
+class Message (object):
     @classmethod
     def parse(cls, data, response):
-        expected_crc = crc32(data[:-_FOOTER_LEN]) & 0xffffffff
-        (actual_crc,) = struct.unpack(_FOOTER_SPEC, data[-_FOOTER_LEN:])
-        assert expected_crc == actual_crc
+        obj, _ = cls.parse_header(data[:HEADER_LEN], response)
+        obj.parse_rest(data[HEADER_LEN:])
+        return obj
 
-        msgtype, id, length = struct.unpack(_HEADER_SPEC, data[:_HEADER_LEN])
-        assert len(data) == length + _HEADER_LEN + _FOOTER_LEN
+    @classmethod
+    def parse_header(cls, header, response):
+        msgtype, id, length = struct.unpack(_HEADER_SPEC, header)
 
-        if cls == _Message:
+        if cls == Message:
             subcls = (REQUEST_CLASSES if not response
                     else RESPONSE_CLASSES)[msgtype]
         else:
@@ -24,19 +25,25 @@ class _Message (object):
 
         obj = subcls()
         obj.id = id
-        obj._parse_message_body(data[_HEADER_LEN:-_FOOTER_LEN])
-        return obj
+        obj.length = length
+        obj.raw_header = header
+        return obj, length + FOOTER_LEN
+
+    def parse_rest(self, data):
+        expected_crc = crc32(data[:-FOOTER_LEN], crc32(self.raw_header))
+        (actual_crc,) = struct.unpack(_FOOTER_SPEC, data[-FOOTER_LEN:])
+        # TODO: check CRCs
+        self._parse_message_body(data[:-FOOTER_LEN])
 
     def encode(self, id):
         body = self._encode_message_body()
         header = struct.pack(_HEADER_SPEC, self.msgtype, id, len(body))
         raw_crc = crc32(body, crc32(header)) & 0xffffffff
-        print('crc32 = {:#010x}'.format(raw_crc))
         crc = struct.pack(_FOOTER_SPEC, raw_crc)
         return b''.join((header, body, crc))
 
 
-class DirectoryListRequest (_Message):
+class DirectoryListRequest (Message):
     msgtype = 0x01
 
     def __init__(self, path=[]):
@@ -48,7 +55,7 @@ class DirectoryListRequest (_Message):
     def _encode_message_body(self):
         return b'\0'.join(self.path)
 
-class DirectoryListResponse (_Message):
+class DirectoryListResponse (Message):
     msgtype = 0x01
 
     def __init__(self, listing=[]):
@@ -60,7 +67,7 @@ class DirectoryListResponse (_Message):
     def _encode_message_body(self):
         return b'\0'.join(self.listing)
 
-class NodeInfoRequest (_Message):
+class NodeInfoRequest (Message):
     msgtype = 0x02
 
     def __init__(self, path=[]):
@@ -72,7 +79,7 @@ class NodeInfoRequest (_Message):
     def _encode_message_body(self):
         return b'\0'.join(self.path)
 
-class NodeInfoResponse (_Message):
+class NodeInfoResponse (Message):
     msgtype = 0x02
 
     def __init__(self, isfile=False, size=0, created=0, accessed=0, modified=0):
@@ -90,12 +97,12 @@ class NodeInfoResponse (_Message):
         return struct.pack('!?IIII', self.isfile, self.size,
                 self.created, self.accessed, self.modified)
 
-class FileContentsRequest (_Message):
+class FileContentsRequest (Message):
     msgtype = 0x03
 
     def __init__(self, offset=0, requested_length=0, path=[]):
         self.offset = offset
-        self.requested_length = length
+        self.requested_length = requested_length
         self.path = path
 
     def _parse_message_body(self, body):
@@ -104,12 +111,12 @@ class FileContentsRequest (_Message):
 
     def _encode_message_body(self):
         return (struct.pack('!II', self.offset, self.requested_length) +
-                '\0'.join(path))
+                b'\0'.join(self.path))
 
-class FileContentsResponse (_Message):
+class FileContentsResponse (Message):
     msgtype = 0x03
 
-    def __init__(self, data):
+    def __init__(self, data=None):
         self.data = data
 
     def _parse_message_body(self, body):
@@ -118,7 +125,7 @@ class FileContentsResponse (_Message):
     def _encode_message_body(self):
         return self.data
 
-class VersionRequest (_Message):
+class VersionRequest (Message):
     msgtype = 0x7F
 
     def _parse_message_body(self, body):
@@ -127,11 +134,11 @@ class VersionRequest (_Message):
     def _encode_message_body(self):
         return b''
 
-class VersionResponse (_Message):
+class VersionResponse (Message):
     """The Python representation of the version should be a 3-tuple: (major, minor, bugfix)"""
     msgtype = 0x7F
 
-    def __init__(self, version):
+    def __init__(self, version=None):
         self.version = version
 
     def _parse_message_body(self, body):
