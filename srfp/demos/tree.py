@@ -1,6 +1,5 @@
 from srfp import comms, protocol
-
-mio = comms.MessageIO('unix:/tmp/virtualbox-sock')
+import begin
 
 def print_tree(mio, path=tuple()):
     mio.send_msg(protocol.DirectoryListRequest(path))
@@ -17,5 +16,8 @@ def print_tree(mio, path=tuple()):
         if not info_resp.isfile:
             print_tree(mio, full_path)
 
-if __name__ == "__main__":
+@begin.start
+@begin.logging
+def main():
+    mio = comms.MessageIO('unix:/tmp/virtualbox-sock')
     print_tree(mio)
