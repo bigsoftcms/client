@@ -1,7 +1,11 @@
-from urllib.parse import urlparse
 import socket
 import serial
 from .protocol import Message, HEADER_LEN
+
+try:
+    from urllib.parse import urlparse
+except ImportError:
+    from urlparse import urlparse
 
 class MessageIO (object):
     def __init__(self, address):
