@@ -8,6 +8,11 @@ import sys
 import os
 import begin
 
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from StringIO import StringIO
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -160,10 +165,52 @@ class SRFPFile (FileLikeBase):
     def _tell(self):
         return self.ptr
 
+class SRFPFSDsStorage (SRFPFS):
+    """Provide fake .DS_Store files to keep OS X happy.
+
+    Extends SRFPFS, adding fake .DS_Store entries to every directory in the filesystem,
+    and handing out blank StringIO objects when they're open()ed.
+
+    The contents of these objects is lost when they are closed. 
+
+    PyFilesystem doesn't seem to tell the OS that the volume it's mounting is readonly,
+    and apparently OS X __really__ doesn't like it when it can't write to .DS_Store files,
+    so this gives it something to write to in order to keep it happy.
+    """
+
+    def getinfo(self, path):
+        if path.endswith(".DS_Store"):
+            return {'size': 0}
+        else:
+            return super(SRFPFSDsStorage, self).getinfo(path)
+
+    def open(self, path, *args, **kwargs):
+        if path.endswith(".DS_Store"):
+            return StringIO()
+        else:
+            return super(SRFPFSDsStorage, self).open(path, *args, **kwargs)
+
+    def isfile(self, path):
+        if path.endswith(".DS_Store"):
+            return True
+        else:
+            return super(SRFPFSDsStorage, self).isfile(path)
+
+    def isdir(self, path):
+        if path.endswith(".DS_Store"):
+            return False
+        else:
+            return super(SRFPFSDsStorage, self).isdir(path)
+
+    def listdir(self, *args, **kwargs):
+        rv = super(SRFPFSDsStorage, self).listdir(*args, **kwargs)
+        rv.append('.DS_Store')
+        return rv
+
 
 @begin.start
 @begin.logging
 def start(path, mountpoint):
-    myfs = SRFPFS(path)
+    myfs = SRFPFSDsStorage(path)
     from fs.expose import fuse
     fuse.mount(myfs, mountpoint.encode('utf8'), foreground=True)
