@@ -1,7 +1,8 @@
 from fs.base import FS, NoDefaultMeta
 from fs.filelike import FileLikeBase
-from fs.errors import UnsupportedError, NoMetaError
-from threading import Thread
+from fs.errors import UnsupportedError, NoMetaError, ResourceNotFoundError, FSError, ResourceInvalidError
+from fs.memoryfs import MemoryFile
+from threading import Thread, Lock
 from datetime import datetime
 import sys
 import os
@@ -26,6 +27,8 @@ def filename2proto(name):
     v = list(os.path.split(name))
     if v[0] == "/":
         del v[0]
+    elif v[0].startswith("/"):
+        v[0] = v[0][1:]
     return [x for x in v if x]
 
 class SRFPFS (FS):
@@ -53,12 +56,27 @@ class SRFPFS (FS):
     def _msg_get(self, msg):
         resp_q = Queue()
         self.msg_q.put((msg, resp_q))
-        return resp_q.get()
+        response = resp_q.get()
+        if isinstance(response, protocol.Error):
+            pass # TODO: raise appropriate exception
+            if response.code == protocol.Error.Codes.DOES_NOT_EXIST:
+                logger.debug("ResourceNotFoundError")
+                raise ResourceNotFoundError()
+            else:
+                logger.debug("FSError")
+                raise FSError()
+        else:
+            return response
 
     def open(self, path, mode='r', buffering=-1, encoding=None, errors=None, newline=None, line_buffering=False, **kwargs):
-        logger.debug("open: %s", path)
+        logger.debug("open: %s mode %s", path, mode)
         if 'w' in mode or 'a' in mode:
             raise UnsupportedError()
+
+        # the isfile() call will also raise an exception if the file does not exist
+        if not self.isfile(path):
+            logger.debug("ResourceInvalidError: %s", path)
+            raise ResourceInvalidError(path)
 
         return SRFPFile(self, filename2proto(path))
 
@@ -117,6 +135,7 @@ class SRFPFS (FS):
 
 class SRFPFile (FileLikeBase):
     def __init__(self, fs, path):
+        logger.debug("SRFPFile init: %s", path)
         super(SRFPFile, self).__init__()
         self.path = path
         self.fs = fs

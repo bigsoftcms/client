@@ -157,11 +157,29 @@ class VersionResponse (Message):
     def _encode_message_body(self):
         return struct.pack('!BBB', *self.version)
 
+class Error (Message):
+    """The Python representation of the version should be a 3-tuple: (major, minor, bugfix)"""
+    msgtype = 0x80
+
+    def __init__(self, code=None):
+        self.code = code
+
+    def _parse_message_body(self, body):
+        (self.code,) = struct.unpack('!B', body)
+
+    def _encode_message_body(self):
+        return struct.pack('!B', self.code)
+
+    class Codes (object):
+        DOES_NOT_EXIST = 0x01
+        OTHER = 0xFF
+
 MESSAGE_CLASSES = {
     0x01: DirectoryListRequest,
     0x02: NodeInfoRequest,
     0x03: FileContentsRequest,
     0x7F: VersionRequest,
+    0x80: Error,
     0x81: DirectoryListResponse,
     0x82: NodeInfoResponse,
     0x83: FileContentsResponse,
