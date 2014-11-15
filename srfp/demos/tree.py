@@ -15,6 +15,8 @@ def print_tree(mio, path=tuple()):
         info_resp = mio.recv_msg()
         if not info_resp.isfile:
             print_tree(mio, full_path)
+        else:
+            print("{}|     {} bytes".format(' '*len(path)*4, info_resp.size))
 
 @begin.start
 @begin.logging
