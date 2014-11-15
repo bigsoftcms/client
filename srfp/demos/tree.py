@@ -20,6 +20,6 @@ def print_tree(mio, path=tuple()):
 
 @begin.start
 @begin.logging
-def main():
-    mio = comms.MessageIO('unix:/tmp/virtualbox-sock')
+def main(path):
+    mio = comms.MessageIO(path)
     print_tree(mio)
